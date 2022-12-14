@@ -6,8 +6,11 @@ library(fdapace) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
 library(MASS)
 library(AsynchLong) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
 library(caTools) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
-library(doParallel)
-registerDoParallel(cores = 12)
+#library(doParallel)
+#registerDoParallel(cores = 10)
+library(future)
+library(furrr)
+future::plan(multisession, workers = 10)
 sourceDir <- function(path, trace = FALSE, ...) {
   for (nm in list.files(path, pattern = "[.][RrSsQq]$")) {
     if(trace) cat(nm,":")
@@ -37,17 +40,13 @@ psi <- function(t, k) {
 }
 
 # error variance structure: ind = TRUE for independent error, ind = FALSE for non-independent error
-evar_fun <- function(tt, ind = NULL, no_error = TRUE) {
-  if (no_error) {
-    covs <- diag(0, nrow = length(tt))
+evar_fun <- function(tt, ind = FALSE) {
+  if (ind) {
+    covs <- diag(1.5, nrow = length(tt))
   } else {
-    if (ind) {
-      covs <- diag(1.5, nrow = length(tt))
-    } else {
-      covs <- outer(tt, tt, function(t1,t2) {
-        2^(-abs(t1-t2)/5)
-      })
-    }
+    covs <- outer(tt, tt, function(t1,t2) {
+      2^(-abs(t1-t2)/5)
+    })
   }
   return(covs)
 }
@@ -60,7 +59,7 @@ res <- NULL
 for (i in 1:200) {
   cat("Doing the simulation ", i, "th time", "\n")
   ## univariate representation simulation
-  data.list <- sim_datax(n=n, m=m, sd.pcs = sd.pcs, sd.e = 1, dx = 1, beta = b, method = "fix")
+  data.list <- sim_datax(n=n, m=m, sd.pcs = sd.pcs, sd.e = 0, dx = 1, beta = b, method = "fix")
   # observed X (on S domain)
   W_s <- data.list$Ws
   # true X on t domain
@@ -81,26 +80,26 @@ for (i in 1:200) {
   mubw <- fm.res$pca.mubw; covbw <- fm.res$pca.covbw
   # bootstrap sampling for beta standard error estimation
   t0 = Sys.time()
-  b.bts <- foreach(bts = 1:10, .combine = "rbind") %dopar% {
+  #b.bts <- foreach(bts = 1:10, .combine = "rbind") %dopar% {
+  b.bts_list <- furrr::future_map(1:10, ~{
     bts_res = c()
-    print(bts)
     for (bts_ in 1:50) {
       s.idx <- sample(1:n, size = n, replace = TRUE)
       Lwb <- Lw[s.idx]
       Lsb <- Ls[s.idx]
       tb <- t[s.idx,]
       Yb <- c(matrix(Y, ncol = n, byrow = FALSE)[,s.idx])
-      print(bts_)
       fm.b <- FMlassoX1(Yb, tb, Lwb, Lsb, optns = list(dataType = "Sparse", nRegGrid = 60, userBwMu = mubw, userBwCov = covbw))
       #c(fm.b$beta) 
-      bts_res <- rbind(bts_res, fm.b$beta)
+      bts_res <- rbind(bts_res, c(fm.b$beta))
     }
     bts_res
-  }
+  }, .options = furrr_options(seed = TRUE))
+  b.bts <- do.call("rbind", b.bts_list); rm(b.bts_list)
   sd_time.fm <- as.numeric(Sys.time() - t0, units = "mins")
   # simple last observation carried forward, same result with the package
-  #locf.res <- LOCFlassoX(Y, t, W_s, s)
-  #b.locf <- locf.res$beta
+  # locf.res <- LOCFlassoX(Y, t, W_s, s)
+  # b.locf <- locf.res$beta
   # kernel last observation carried forward
   data.x <- data.frame(ID = rep(1:n, each = m), s = c(t(s[[1]])), W = W_s)
   data.y <- data.frame(ID = rep(1:n, each = m), t = c(t(t)), Y = Y)
@@ -121,7 +120,7 @@ for (i in 1:200) {
                      std1 = c(sd(b.bts[,2]), ti.res$stdErr[2]), est_time = c(est_time.fm, ti.res$beta_time),
                      sd_time = c(sd_time.fm, ti.res$sd_time))
   res <- rbind(res, resi)
-  saveRDS(res, file = paste0("./onex2_sim_noerror_", n, ".rds"))
+  saveRDS(res, file = paste0("./onex2_sim_nind_noerror_", n, ".rds"))
   cat("Have done the simulation ", i, "\n")
 }
 print(warnings())
