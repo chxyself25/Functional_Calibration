@@ -9,13 +9,14 @@ FMlassoX1 <- function(Y, t, Lw, Ls, optns = NULL) {
   pca <- FPCAIC(Lw, Ls, optns, spec = list("AIC", FALSE))
   pred <- matrix(rep(pca$mu, n), byrow = TRUE, ncol = length(pca$workGrid)) + pca$xiEst %*% t(pca$phi[, 1:pca$selectK, drop = FALSE])
   s.range <- range(pca$workGrid)
-  impute_res = foreach(j = 1:n, .combine = "c") %dopar% {
+  #impute_res = foreach(j = 1:n, .combine = "c") %dopar% {
+  impute_res = unlist(lapply(1:n, function(j) {
     tt <- t[j,]
     in.idx <- tt >= s.range[1] & tt <= s.range[2]
     resj <- rep(NA, length(tt))
     resj[in.idx] <- ConvertSupport(pca$workGrid, toGrid = tt[in.idx], mu = pred[j,])
     resj
-  }
+  }))
   nna.idx <- which(!is.na(impute_res))
   X.fm <- cbind(1, impute_res[nna.idx])
   Y.nna <- Y[nna.idx]
