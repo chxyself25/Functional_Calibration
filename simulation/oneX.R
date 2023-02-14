@@ -10,7 +10,7 @@ library(caTools) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
 #registerDoParallel(cores = 10)
 library(future)
 library(furrr)
-future::plan(multisession, workers = 10)
+future::plan(future.callr::callr, workers = 10)
 sourceDir <- function(path, trace = FALSE, ...) {
   for (nm in list.files(path, pattern = "[.][RrSsQq]$")) {
     if(trace) cat(nm,":")
@@ -44,7 +44,7 @@ evar_fun <- function(tt, ind = FALSE) {
   return(covs)
 }
 
-b <- c(1, 2); n <- 200; m <- 5
+b <- c(1, 2); n <- 200; m <- 15
 sd.pcs <- c(2, sqrt(2), 1)
 optns <- list(dataType = "Sparse", nRegGrid = 60, methodBwMu = "GCV", methodBwCov = "GCV")
 
@@ -56,7 +56,7 @@ res <- NULL
 for (i in 1:200) {
   cat("Doing the simulation ", i, "th time", "\n")
   ## univariate representation simulation
-  data.list <- sim_datax(n=n, m=m, sd.pcs = sd.pcs, sd.e = 0, dx = 1, beta = b, method = "fix")
+  data.list <- sim_datax(n=n, m=m, sd.pcs = sd.pcs, sd.e = 1, dx = 1, beta = b, method = "fix")
   # observed X (on S domain)
   W_s <- data.list$Ws
   # true X on t domain
@@ -117,7 +117,7 @@ for (i in 1:200) {
                      std1 = c(sd(b.bts[,2]), ti.res$stdErr[2]), est_time = c(est_time.fm, ti.res$beta_time),
                      sd_time = c(sd_time.fm, ti.res$sd_time))
   res <- rbind(res, resi)
-  saveRDS(res, file = paste0("./onex1_sim_nind_noerror_", n, ".rds"))
+  saveRDS(res, file = paste0("./onex1_sim_nind_m15_", n, ".rds"))
   cat("Have done the simulation ", i, "\n")
 }
 print(warnings())

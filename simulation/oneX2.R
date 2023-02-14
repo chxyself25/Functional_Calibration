@@ -10,7 +10,7 @@ library(caTools) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
 #registerDoParallel(cores = 10)
 library(future)
 library(furrr)
-future::plan(multisession, workers = 10)
+future::plan(future.callr::callr, workers = 10)
 sourceDir <- function(path, trace = FALSE, ...) {
   for (nm in list.files(path, pattern = "[.][RrSsQq]$")) {
     if(trace) cat(nm,":")
@@ -53,8 +53,12 @@ evar_fun <- function(tt, ind = FALSE) {
 b <- c(1, 2); n <- 200; m <- 5
 sd.pcs <- c(2, sqrt(2), 1)
 optns <- list(dataType = "Sparse", nRegGrid = 60, methodBwMu = "GCV", methodBwCov = "GCV")
+#optns <- list(dataType = "Sparse", nRegGrid = 60, userBwMu = 0.4, userBwCov = 1.45)
 
 ## simulation 200 times
+#res <- readRDS("./onex2_sim_nind_m15_200.rds")
+## set.seed(1508021186) ### from 1 to 103
+## set.seed(143185782)
 res <- NULL
 for (i in 1:200) {
   cat("Doing the simulation ", i, "th time", "\n")
@@ -66,15 +70,17 @@ for (i in 1:200) {
   X_t <- data.list$Xt
   # two observed sampling time points
   s <- data.list$s
-  t <- data.list$t
+  tmat <- data.list$t
   # observed y response
   Y <- data.list$Y
+  # save data files
+  # saveRDS(data.list, file = paste0("./sim_temp_data/onex2_simdata_nind_m15_", i, ".rds"))
 
   # functional match 
   Lw <- split(W_s, as.factor(rep(1:n, each = m)))
   Ls <- lapply(1:n, function(x) {s[[1]][x,]})
   t0 <- Sys.time()
-  fm.res <- FMlassoX1(Y, t, Lw, Ls, optns = optns)
+  fm.res <- FMlassoX1(Y, tmat, Lw, Ls, optns = optns)
   est_time.fm <- as.numeric(Sys.time()-t0, units = "mins")
   b.fm <- fm.res$beta
   mubw <- fm.res$pca.mubw; covbw <- fm.res$pca.covbw
@@ -87,7 +93,7 @@ for (i in 1:200) {
       s.idx <- sample(1:n, size = n, replace = TRUE)
       Lwb <- Lw[s.idx]
       Lsb <- Ls[s.idx]
-      tb <- t[s.idx,]
+      tb <- tmat[s.idx,]
       Yb <- c(matrix(Y, ncol = n, byrow = FALSE)[,s.idx])
       fm.b <- FMlassoX1(Yb, tb, Lwb, Lsb, optns = list(dataType = "Sparse", nRegGrid = 60, userBwMu = mubw, userBwCov = covbw))
       #c(fm.b$beta) 
@@ -102,7 +108,7 @@ for (i in 1:200) {
   # b.locf <- locf.res$beta
   # kernel last observation carried forward
   data.x <- data.frame(ID = rep(1:n, each = m), s = c(t(s[[1]])), W = W_s)
-  data.y <- data.frame(ID = rep(1:n, each = m), t = c(t(t)), Y = Y)
+  data.y <- data.frame(ID = rep(1:n, each = m), t = c(t(tmat)), Y = Y)
   ti.res <- asynchTI(data.x, data.y)
   b.ti <- ti.res$betaHat
   # summarize results
@@ -113,7 +119,7 @@ for (i in 1:200) {
   #            naive.sigma21 = c(fm.res$beta.sigma2[2], locf.res$beta.sigma2[2], NA), std0 = c(sd(b.bts[,1]), NA, ti.res$stdErr[1]),
   #            std1 = c(sd(b.bts[,2]), NA, ti.res$stdErr[2]))
   betas <- cbind(b.fm, as.matrix(b.ti))
-  resi <- data.frame(beta0 = betas[1,], beta1 = betas[2,], method = c("fm", "kw"),
+  resi <- data.frame(iter = i, beta0 = betas[1,], beta1 = betas[2,], method = c("fm", "kw"),
                      pca.K = c(fm.res$pca.K, NA), pca.sigma2 = c(fm.res$pca.sigma2, NA), 
                      pca.rho = c(fm.res$pca.rho, NA), naive.sigma20 = c(fm.res$beta.sigma2[1], NA),
                      naive.sigma21 = c(fm.res$beta.sigma2[2], NA), std0 = c(sd(b.bts[,1]), ti.res$stdErr[1]),

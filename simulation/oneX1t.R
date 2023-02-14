@@ -7,8 +7,11 @@ library(fdapace) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
 library(MASS)
 library(AsynchLong) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
 library(caTools) #, lib.loc = "/home/xchang/R/x86_64-pc-linux-gnu-library/3.6/")
-library(doParallel)
-registerDoParallel(cores = 100)
+#library(doParallel)
+#registerDoParallel(cores = 10)
+library(future)
+library(furrr)
+future::plan(multicore, workers = 10)
 sourceDir <- function(path, trace = FALSE, ...) {
   for (nm in list.files(path, pattern = "[.][RrSsQq]$")) {
     if(trace) cat(nm,":")
@@ -59,9 +62,13 @@ optns <- list(dataType = "Sparse", nRegGrid = 60, methodBwMu = "GCV", methodBwCo
 bb = NULL
 
 ## simulation 200 times
-res <- foreach(sim = 1:200, .combine = "rbind") %dopar% {
+# res <- foreach(sim = 1:200, .combine = "rbind") %dopar% {
+res <- NULL
+for (batch in 1:20) {
+cat(batch, "\n")
+res_list <- furrr::future_map(1:10, ~{
   ## univariate representation simulation
-  data.list <- sim_dataxt1(n=n, m=m, sd.pcs = sd.pcs, sd.e = 1)
+  data.list <- sim_dataxt1(n=n, m=m, sd.pcs = sd.pcs, sd.e = 0)
   #saveRDS(data.list, file = paste0("./sim_data/onext2_sim_", sim, ".rds"))
   # observed X (on S domain)
   W_s <- data.list$Ws
@@ -77,19 +84,27 @@ res <- foreach(sim = 1:200, .combine = "rbind") %dopar% {
   Lw <- split(W_s, as.factor(rep(1:n, each = m)))
   Ls <- lapply(1:n, function(x) {s[[1]][x,]})
   #Ly <- split(Y, as.factor(rep(1:n, each = m)))
+  t0 <- Sys.time()
   fm.res <- tvFMlassoX1(Y, t, Lw, Ls, optns, convert = TRUE, bw = bb)
+  fm.time <- as.numeric(Sys.time()-t0, units = "mins")
   # simple last observation carried forward, same result with the package
-  locf.res <- tvLOCFlassoX1(Y, t, Lw, Ls, grid.len = optns$nRegGrid, bw = bb)
+  # locf.res <- tvLOCFlassoX1(Y, t, Lw, Ls, grid.len = optns$nRegGrid, bw = bb)
   # kernel last observation carried forward
+  t0 <- Sys.time()
   czf.res <- tvCZFlassoX1(Y, t, W_s, s[[1]], grid.len = optns$nRegGrid, bw = bb) 
+  czf.time <- as.numeric(Sys.time()-t0, units = "mins")
   #data.x <- data.frame(ID = rep(1:n, each = m), s = c(t(s[[1]])), W = W_s)
   #data.y <- data.frame(ID = rep(1:n, each = m), t = c(t(t)), Y = Y)
   #ti.res <- asynchTD(data.x, data.y, times = fm.res$time, kType = "epan", lType = "identity", bw = 1)
   #b.ti <- ti.res$betaHat
   # time-varying coefficient function
+  t0 <- Sys.time()
   f.res <- tvFunctionlassoX1(Y, t, Lw, Ls, optns, optns, cr.bw = c(bb, bb))
+  f.time <- as.numeric(Sys.time()-t0, units = "mins")
   # oracle estimate
+  t0 <- Sys.time()
   o.res <- tvOracle(Y, t, X_t, grid.len = optns$nRegGrid, bw = bb)
+  o.time <- as.numeric(Sys.time()-t0, units = "mins")
   # summarize results
   resdf <- NULL
   #for (i in c("mae", "mse", "maeint", "mseint")) {
@@ -97,12 +112,18 @@ res <- foreach(sim = 1:200, .combine = "rbind") %dopar% {
   #                    method = rep(c("fImpute", "LOCF", "CZF", "FUNC"), each = 2), id = sim)
   #  resdf <- rbind(resdf, dfm)
   #}
-  for (i in c("fm", "locf", "czf", "f", "o")) {
+  for (i in c("fm", "czf", "f", "o")) {
     resi <- get(paste0(i, ".res"))
-    resdf <- rbind(resdf, data.frame(id = sim, method = i, beta0 = resi$coef[,1], beta1 = resi$coef[,2], time = resi$time, bw = resi$bw))
+    timi <- get(paste0(i, ".time"))
+    resdf <- rbind(resdf, data.frame(id = .x+10*(batch-1), method = i, 
+                                     beta0 = resi$coef[,1], beta1 = resi$coef[,2], time = resi$time, 
+                                     bw = resi$bw, run_time = timi))
   }
   resdf
+}, .options = furrr_options(seed = TRUE))
+
+res <- rbind(res, do.call("rbind", res_list))
+saveRDS(res, file = "./onext1_sim_nind_noerror_200.rds")
 }
 
-saveRDS(res, file = "./onext1_sim_nind_200.rds")
 print(warnings())
