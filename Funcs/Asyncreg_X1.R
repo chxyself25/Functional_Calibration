@@ -9,7 +9,7 @@ FMlassoX1 <- function(Y, t, Lw, Ls, optns = NULL) {
   pca <- FPCAIC(Lw, Ls, optns, spec = list("AIC", FALSE))
   pred <- matrix(rep(pca$mu, n), byrow = TRUE, ncol = length(pca$workGrid)) + pca$xiEst %*% t(pca$phi[, 1:pca$selectK, drop = FALSE])
   s.range <- range(pca$workGrid)
-  #impute_res = foreach(j = 1:n, .combine = "c") %dopar% {
+  # impute_res = foreach(j = 1:n, .combine = "c") %dopar% {
   impute_res = unlist(lapply(1:n, function(j) {
     tt <- t[j,]
     in.idx <- tt >= s.range[1] & tt <= s.range[2]
@@ -79,13 +79,14 @@ tvFMlassoX1 <- function(Y, t, Lw, Ls, optns = list(), convert = TRUE, bw = NULL)
   pca <- FPCAIC(Lw, Ls, optns, spec = list("AIC", FALSE))
   pred <- matrix(rep(pca$mu, n), byrow = TRUE, ncol = length(pca$workGrid)) + pca$xiEst %*% t(pca$phi[, 1:pca$selectK, drop = FALSE])
   s.range <- range(pca$workGrid)
-  impute_res = foreach(j = 1:n, .combine = "c") %dopar% {
+  #impute_res = foreach(j = 1:n, .combine = "c") %dopar% {
+  impute_res <- unlist(lapply(1:n, function(j) {
     tt <- t[j,]
     in.idx <- tt >= s.range[1] & tt <= s.range[2]
     resj <- rep(NA, length(tt))
     resj[in.idx] <- ConvertSupport(pca$workGrid, toGrid = tt[in.idx], mu = pred[j,])
     resj
-  }
+  }))
   nna.idx <- which(!is.na(impute_res))
   tt <- c(t(t))[nna.idx]
   df <- data.frame(y = Y[nna.idx][order(tt)], x = impute_res[nna.idx][order(tt)])
@@ -146,7 +147,8 @@ tvCZFlassoX1 <- function(Y, t, Ws, s, grid.len = 60, bw = NULL) {
   data.y <- data.frame(ID = rep(1:n, each = m), t = c(t(t)), Y = Y)
   #timepts <- sort(c(t))
   timepts <- seq(max(min(t), min(s)), min(max(t), max(s)), length.out = grid.len)
-  ti.res <- foreach(x = timepts, .combine = "rbind") %do% {
+  #ti.res <- foreach(x = timepts, .combine = "rbind") %do% {
+  ti.res <- lapply(timepts, function(x) {
     timodel <- tryCatch(asynchTD(data.x, data.y, times = x, kType = "epan", lType = "identity",
              bw = bw, verbose = FALSE), error = function(e) {NA})
     if (any(is.na(timodel))) {
@@ -154,7 +156,8 @@ tvCZFlassoX1 <- function(Y, t, Ws, s, grid.len = 60, bw = NULL) {
     } else {
       c(c(timodel$betaHat), ifelse(is.null(bw), timodel$optBW, bw)) 
     }
-  }
+  })
+  ti.res <- do.call("rbind", ti.res)
   diff.mat <- cbind(beta_fun(timepts, intercept = TRUE), beta_fun(timepts, intercept = FALSE)) - ti.res[,1:2]
   mae <- apply(diff.mat, 2, function(x) {mean(abs(x), na.rm = TRUE)})
   mse <- apply(diff.mat, 2, function(x) {mean(x^2, na.rm = TRUE)})
