@@ -1,6 +1,7 @@
 ########### visualization: code run locally #####################
 library(reshape2)
 library(ggplot2)
+library(fdapace)
 
 file_code <- "FSH_BMI_INCOME_AGE"
 fix_var <- c("BMI", "intercept", "income_high", "age")
@@ -63,16 +64,17 @@ for (v in unique(plt$variable)) {
   rg <- range(plt$year[plt$method == "FCART"])
   yrg <- c(min(plt$lower[plt$variable == v & plt$year <= rg[2]], na.rm= TRUE), 
            max(plt$upper[plt$variable == v & plt$year <= rg[2]], na.rm = TRUE))
-  for (m in unique(plt$method)) {
-    pltmv <- subset(plt, method == m & variable == v) 
-    ggplot(pltmv) + geom_line(aes(year, estimate), color = "black", size = 0.5) + 
-      geom_line(aes(year, upper), color = "blue", size = 0.5, linetype = 2) +
-      geom_line(aes(year, lower), color = "blue", size = 0.5, linetype = 2) + 
-      ylab(v) + ylim(yrg) + 
-      scale_x_continuous(breaks = seq(0, rg[2], by = 1), limits = rg) + 
-      theme_bw() + theme(text = element_text(size = 13))
-    ggsave(file = paste0("./twoxt_z_", m, "_", v, "_slope_bts_income_age.pdf"), width = 4, height = 3)
-  }
+  # for (m in unique(plt$method)) {
+  m = "FCART"
+  pltmv <- subset(plt, method == m & variable == v) 
+  v_name <- ifelse(v == "income_high", "HIGH INCOME", toupper(v))
+  ggplot(pltmv) + geom_line(aes(year, estimate), color = "black", size = 0.5) + 
+    geom_line(aes(year, upper), color = "blue", size = 0.5, linetype = 2) +
+    geom_line(aes(year, lower), color = "blue", size = 0.5, linetype = 2) + 
+    ylab(v_name) + ylim(yrg) + 
+    scale_x_continuous(breaks = seq(0, rg[2], by = 1), limits = rg) + 
+    theme_bw() + theme(text = element_text(size = 13))
+  ggsave(file = paste0("./twoxt_z_", m, "_", v, "_slope_bts_income_age.pdf"), width = 4, height = 3)
 }
 
 
