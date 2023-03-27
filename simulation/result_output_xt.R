@@ -114,11 +114,12 @@ for (set in 1:2) {
 ############################################
 ######## summarize results in plots ########
 ############################################
-grid <- seq(0.25, 9.75, by = 0.1)
-m = "m15"
+percent <- 100
+grid <- seq(0+0.1*(100-percent)*0.5, 10-0.1*(100-percent)*0.5, by = 0.1)
+m = NULL
 for (set in 1:2) {
   res <- readRDS(paste(c(paste0("./onext", set, "_sim_nind"), m, "200.rds"), collapse = "_"))
-  if (m == "m15" & set == 2) {
+  if (!is.null(m) && m == "m15" & set == 2) {
     id_seq <- unlist(lapply(1:10, function(i) {sapply(1:20, function(iter) {iter + 20*(i-1)})}))
     res$id <- rep(id_seq, each = 4*60) 
   }
@@ -132,7 +133,7 @@ for (set in 1:2) {
     summarize(beta0 = interp_NA(time, grid, beta0), time = grid) %>%
     ungroup() %>%
     group_by(method, time) %>%
-    summarize(avg = mean(beta0, na.rm = TRUE), upper = quantile(beta0, 0.975, na.rm=TRUE), 
+    summarize(avg = median(beta0, na.rm = TRUE), upper = quantile(beta0, 0.975, na.rm=TRUE), 
               lower = quantile(beta0, 0.025, na.rm=TRUE)) %>% 
     mutate(true0 = beta_fun(time, intercept = TRUE, set)) %>% as.data.frame
   ggplot(res30) + geom_line(aes(time, avg), color = "black", size = 0.5) +
@@ -141,14 +142,18 @@ for (set in 1:2) {
     geom_line(aes(time, lower), color = "blue", size = 0.5, linetype = 2) +
     facet_wrap(.~method, nrow = 2, ncol = 3, scale = "free_y") + theme_bw() + ylab("b0")
   #ggsave(paste0("./OneX/all5_beta0_sim_xt", set, "_bands", bw, ".pdf"), width = 6, height = 5)
+  rng <- c(min(res30$lower[res30$method %in% c("FCAR", "Oracle")], na.rm = TRUE), max(res30$upper[res30$method %in% c("FCAR", "Oracle")], na.rm = TRUE))
   for (md in unique(res30$method)) {
-    res30m <- subset(res30, method == m)
-    ggplot(res30m) + geom_line(aes(time, avg), color = "black", size = 0.8) + 
+    res30m <- subset(res30, method == md)
+    plt <- ggplot(res30m) + geom_line(aes(time, avg), color = "black", size = 0.8) + 
       geom_line(aes(time, true0), color = "red", size = 0.8) + 
       geom_line(aes(time, upper), color = "blue", size = 0.8, linetype = 2) + 
       geom_line(aes(time, lower), color = "blue", size = 0.8, linetype = 2) + 
       ylab("intercept") + theme_bw() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20))
-    ggsave(paste(c(paste0("./", md,"_beta0_sim_xt", set), m, "bands.pdf"), collapse = "_"))
+    if (md %in% c("FCAR", "Oracle")) {
+      plt <- plt + ylim(rng)
+    }
+    ggsave(plt, file = paste(c(paste0("./", md,"_beta0_sim_xt", set), m, "bands", paste0(percent, ".pdf")), collapse = "_"))
   }
   
   res31 <- res %>%
@@ -156,7 +161,7 @@ for (set in 1:2) {
     summarize(beta1 = interp_NA(time, grid, beta1), time = grid) %>%
     ungroup() %>%
     group_by(method, time) %>%
-    summarize(avg = mean(beta1, na.rm = TRUE), upper = quantile(beta1, 0.975, na.rm=TRUE), 
+    summarize(avg = median(beta1, na.rm = TRUE), upper = quantile(beta1, 0.975, na.rm=TRUE), 
               lower = quantile(beta1, 0.025, na.rm=TRUE)) %>% 
     mutate(true1 = beta_fun(time, intercept = FALSE, set)) %>% as.data.frame
   ggplot(res31) + geom_line(aes(time, avg), color = "black", size = 0.5) +
@@ -164,15 +169,19 @@ for (set in 1:2) {
     geom_line(aes(time, upper), color = "blue", size = 0.5, linetype = 2) +
     geom_line(aes(time, lower), color = "blue", size = 0.5, linetype = 2) +
     facet_wrap(.~method, nrow = 2, ncol = 3, scale = "free_y") + theme_bw() + ylab("b1")
+  rng <- c(min(res31$lower[res31$method %in% c("FCAR", "Oracle")], na.rm = TRUE), max(res31$upper[res31$method %in% c("FCAR", "Oracle")], na.rm = TRUE))
   for (md in unique(res31$method)) {
-    res31m <- subset(res31, method == m)
-    ggplot(res31m) + geom_line(aes(time, avg), color = "black", size = 0.8) + 
-      geom_line(aes(time, true1), color = "red", size = 0.8) + 
+    res31m <- subset(res31, method == md)
+    plt <- ggplot(res31m) + geom_line(aes(time, avg), color = "black", linetype = "longdash", size = 0.8) + 
+      geom_line(aes(time, true1), color = "black", size = 0.8) + 
       geom_line(aes(time, upper), color = "blue", size = 0.8, linetype = 2) + 
       geom_line(aes(time, lower), color = "blue", size = 0.8, linetype = 2) + 
       ylab("slope") + theme_bw() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20))
+    if (md %in% c("FCAR", "Oracle")) {
+      plt <- plt + ylim(rng)
+    }
     #ggsave(paste0("./", md,"_beta1_sim_xt", set, "_bands", bw, ".pdf"))
-    ggsave(paste(c(paste0("./", md,"_beta1_sim_xt", set), m, "bands.pdf"), collapse = "_"))
+    ggsave(plt, file = paste(c(paste0("./", md,"_beta1_sim_xt", set), m, "bands", paste0(percent, ".pdf")), collapse = "_"))
   }
 }
 
